@@ -60,7 +60,6 @@ class NordeaTransaction(BaseModel):
                 str(self.name or ""),
                 str(self.sender or ""),
                 str(self.recipient or ""),
-                str(self.balance or ""),
             ]
         )
         return hashlib.md5(hash_input.encode("utf-8")).hexdigest()
