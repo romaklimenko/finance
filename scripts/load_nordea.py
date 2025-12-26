@@ -7,6 +7,7 @@ Usage:
 
 import csv
 import hashlib
+import sys
 from datetime import date, datetime
 from pathlib import Path
 
@@ -24,16 +25,18 @@ class NordeaTransaction(BaseModel):
     name: str | None
     description: str | None
     balance: float | None
-    currency: str
+    currency: str = "DKK"
     reconciled: str | None
 
     @field_validator("amount", "balance", mode="before")
     @classmethod
     def parse_danish_decimal(cls, v: str | None) -> float | None:
-        """Convert Danish decimal format (comma separator) to float."""
+        """Convert Danish decimal format (comma separator, period thousands) to float."""
         if v is None or v == "":
             return None
-        return float(str(v).replace(",", "."))
+        # Remove thousands separator (period) and convert decimal separator (comma)
+        cleaned = str(v).replace(".", "").replace(",", ".")
+        return float(cleaned)
 
     @field_validator("posting_date", mode="before")
     @classmethod
@@ -94,6 +97,7 @@ def parse_csv_file(csv_path: Path) -> list[NordeaTransaction]:
         # Parse header
         header = next(reader, None)
         if not header:
+            print(f"  Warning: {csv_path.name} appears to be empty", file=sys.stderr)
             return []
 
         # Remove empty trailing column if present (from trailing semicolon)
@@ -226,11 +230,16 @@ def load_transactions(
 
 def load_all_csv_files(csv_dir: Path, db_path: Path) -> None:
     """Load all Nordea CSV files from directory into DuckDB."""
+    # Validate CSV directory exists
+    if not csv_dir.exists():
+        print(f"Error: CSV directory does not exist: {csv_dir}", file=sys.stderr)
+        sys.exit(1)
+    if not csv_dir.is_dir():
+        print(f"Error: Path is not a directory: {csv_dir}", file=sys.stderr)
+        sys.exit(1)
+
     # Ensure db directory exists
     db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    con = duckdb.connect(str(db_path))
-    create_staging_table(con)
 
     csv_files = list(csv_dir.glob("*.csv"))
     print(f"Found {len(csv_files)} CSV file(s) in {csv_dir}")
@@ -238,18 +247,19 @@ def load_all_csv_files(csv_dir: Path, db_path: Path) -> None:
     total_inserted = 0
     total_skipped = 0
 
-    for csv_file in csv_files:
-        print(f"\nProcessing: {csv_file.name}")
-        transactions = parse_csv_file(csv_file)
-        print(f"  Parsed {len(transactions)} transactions")
+    with duckdb.connect(str(db_path)) as con:
+        create_staging_table(con)
 
-        inserted, skipped = load_transactions(con, transactions, csv_file.name)
-        print(f"  Inserted: {inserted}, Skipped (duplicates): {skipped}")
+        for csv_file in csv_files:
+            print(f"\nProcessing: {csv_file.name}")
+            transactions = parse_csv_file(csv_file)
+            print(f"  Parsed {len(transactions)} transactions")
 
-        total_inserted += inserted
-        total_skipped += skipped
+            inserted, skipped = load_transactions(con, transactions, csv_file.name)
+            print(f"  Inserted: {inserted}, Skipped (duplicates): {skipped}")
 
-    con.close()
+            total_inserted += inserted
+            total_skipped += skipped
 
     print(f"\n{'=' * 50}")
     print(f"Total inserted: {total_inserted}")
