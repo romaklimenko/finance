@@ -132,8 +132,16 @@ def parse_csv_file(csv_path: Path) -> list[NordeaTransaction]:
     return transactions
 
 
-def create_staging_table(con: duckdb.DuckDBPyConnection) -> None:
-    """Create the raw_nordea_transactions staging table if it doesn't exist."""
+def create_staging_table(con: duckdb.DuckDBPyConnection, truncate: bool = False) -> None:
+    """Create the raw_nordea_transactions staging table if it doesn't exist.
+
+    Args:
+        con: Database connection
+        truncate: If True, drop and recreate the table for a fresh load
+    """
+    if truncate:
+        con.execute("DROP TABLE IF EXISTS raw_nordea_transactions")
+
     con.execute("""
         CREATE TABLE IF NOT EXISTS raw_nordea_transactions (
             transaction_hash VARCHAR PRIMARY KEY,
@@ -169,20 +177,46 @@ def load_transactions(
     con: duckdb.DuckDBPyConnection,
     transactions: list[NordeaTransaction],
     source_file: str,
-) -> tuple[int, int]:
+    loaded_dates: set[date],
+) -> tuple[int, int, set[date]]:
     """
     Load transactions into DuckDB using batch insert with ON CONFLICT.
 
+    Skips transactions for dates already loaded from newer files.
+
+    Args:
+        con: Database connection
+        transactions: List of transactions to load
+        source_file: Name of source CSV file
+        loaded_dates: Set of dates already loaded from newer files
+
     Returns:
-        Tuple of (inserted_count, skipped_count)
+        Tuple of (inserted_count, skipped_count, new_dates_in_file)
     """
     if not transactions:
-        return 0, 0
+        return 0, 0, set()
 
-    # Prepare batch data
+    # Prepare batch data, skipping dates already loaded
     batch_data = []
+    dates_in_file: set[date] = set()
+    skipped_by_date = 0
+
     for txn in transactions:
         posting_date = parse_posting_date(txn.posting_date, source_file)
+
+        # Skip reserved (pending) transactions - they have no posting date
+        if posting_date is None:
+            skipped_by_date += 1
+            continue
+
+        # Skip if this date was already loaded from a newer file
+        if posting_date in loaded_dates:
+            skipped_by_date += 1
+            continue
+
+        if posting_date:
+            dates_in_file.add(posting_date)
+
         batch_data.append(
             (
                 txn.compute_hash(),
@@ -198,6 +232,9 @@ def load_transactions(
                 source_file,
             )
         )
+
+    if not batch_data:
+        return 0, skipped_by_date, set()
 
     # Get count before insert
     result = con.execute(
@@ -224,13 +261,36 @@ def load_transactions(
     count_after: int = result[0] if result else 0
 
     inserted = count_after - count_before
-    skipped = len(transactions) - inserted
+    skipped_by_hash = len(batch_data) - inserted
 
-    return inserted, skipped
+    return inserted, skipped_by_date + skipped_by_hash, dates_in_file
 
 
-def load_all_csv_files(csv_dir: Path, db_path: Path) -> None:
-    """Load all Nordea CSV files from directory into DuckDB."""
+def extract_account_from_filename(filename: str) -> str:
+    """Extract account identifier from Nordea filename.
+
+    Expected format: 'Konto XXXXXXXXXX - YYYY-MM-DD HH.MM.SS.csv'
+    Returns the account number or the full filename if pattern doesn't match.
+    """
+    # Try to extract account number (e.g., "Konto 0718425948")
+    if filename.startswith("Konto "):
+        parts = filename.split(" - ", 1)
+        if len(parts) >= 1:
+            return parts[0]  # "Konto XXXXXXXXXX"
+    return filename
+
+
+def load_all_csv_files(csv_dir: Path, db_path: Path, truncate: bool = True) -> None:
+    """Load all Nordea CSV files from directory into DuckDB.
+
+    Files are processed newest-first (sorted alphabetically descending by name).
+    For each account, dates already loaded from newer files are skipped in older files.
+
+    Args:
+        csv_dir: Directory containing Nordea CSV files
+        db_path: Path to DuckDB database file
+        truncate: If True (default), drop and recreate the table for a fresh load
+    """
     # Validate CSV directory exists
     if not csv_dir.exists():
         print(f"Error: CSV directory does not exist: {csv_dir}", file=sys.stderr)
@@ -243,21 +303,37 @@ def load_all_csv_files(csv_dir: Path, db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     csv_files = list(csv_dir.glob("*.csv"))
-    print(f"Found {len(csv_files)} CSV file(s) in {csv_dir}")
+    # Sort alphabetically descending - newer files (with later dates) come first
+    csv_files.sort(key=lambda f: f.name, reverse=True)
+    print(f"Found {len(csv_files)} CSV file(s) in {csv_dir} (processing newest first)")
 
     total_inserted = 0
     total_skipped = 0
 
+    # Track loaded dates per account
+    loaded_dates_by_account: dict[str, set[date]] = {}
+
     with duckdb.connect(str(db_path)) as con:
-        create_staging_table(con)
+        create_staging_table(con, truncate=truncate)
 
         for csv_file in csv_files:
             print(f"\nProcessing: {csv_file.name}")
+
+            account = extract_account_from_filename(csv_file.name)
+            loaded_dates = loaded_dates_by_account.get(account, set())
+
             transactions = parse_csv_file(csv_file)
             print(f"  Parsed {len(transactions)} transactions")
 
-            inserted, skipped = load_transactions(con, transactions, csv_file.name)
-            print(f"  Inserted: {inserted}, Skipped (duplicates): {skipped}")
+            inserted, skipped, new_dates = load_transactions(
+                con, transactions, csv_file.name, loaded_dates
+            )
+            print(f"  Inserted: {inserted}, Skipped: {skipped}")
+
+            # Add newly loaded dates to the account's set
+            if account not in loaded_dates_by_account:
+                loaded_dates_by_account[account] = set()
+            loaded_dates_by_account[account].update(new_dates)
 
             total_inserted += inserted
             total_skipped += skipped
