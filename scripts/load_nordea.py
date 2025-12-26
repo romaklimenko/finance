@@ -58,6 +58,8 @@ class NordeaTransaction(BaseModel):
                 str(self.amount),
                 str(self.description or ""),
                 str(self.name or ""),
+                str(self.sender or ""),
+                str(self.recipient or ""),
                 str(self.balance or ""),
             ]
         )
