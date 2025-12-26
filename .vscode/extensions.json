@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "innoverio.vscode-dbt-power-user",
+    "mechatroner.rainbow-csv",
+    "redhat.vscode-yaml",
+    "charliermarsh.ruff",
+    "ms-python.debugpy"
+  ]
+}
