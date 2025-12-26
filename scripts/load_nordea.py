@@ -5,9 +5,10 @@ Usage:
     python scripts/load_nordea.py [--csv-dir PATH] [--db-path PATH]
 """
 
+import csv
 import hashlib
+from datetime import date, datetime
 from pathlib import Path
-from datetime import datetime
 
 import duckdb
 from pydantic import BaseModel, field_validator
@@ -83,39 +84,45 @@ def parse_csv_file(csv_path: Path) -> list[NordeaTransaction]:
     - Semicolon delimiter
     - Danish headers
     - Danish decimal format (comma)
+    - Quoted fields containing delimiters
     """
     transactions = []
 
-    with open(csv_path, "r", encoding="utf-8-sig") as f:
-        lines = f.readlines()
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f, delimiter=";")
 
-    if not lines:
-        return []
+        # Parse header
+        header = next(reader, None)
+        if not header:
+            return []
 
-    # Parse header
-    header = lines[0].strip().rstrip(";").split(";")
-    english_header = [COLUMN_MAPPING.get(col, col) for col in header]
+        # Remove empty trailing column if present (from trailing semicolon)
+        if header and header[-1] == "":
+            header = header[:-1]
 
-    # Parse data rows
-    for line in lines[1:]:
-        line = line.strip()
-        if not line:
-            continue
+        english_header = [COLUMN_MAPPING.get(col, col) for col in header]
 
-        values = line.rstrip(";").split(";")
+        # Parse data rows
+        for row in reader:
+            if not row or all(v == "" for v in row):
+                continue
 
-        # Pad values list to match header length (some rows may have fewer values)
-        while len(values) < len(english_header):
-            values.append("")
+            # Remove empty trailing value if present
+            if row and row[-1] == "":
+                row = row[:-1]
 
-        # Create dict from header + values
-        row_dict = dict(zip(english_header, values))
+            # Pad values list to match header length (some rows may have fewer values)
+            while len(row) < len(english_header):
+                row.append("")
 
-        # Convert empty strings to None
-        row_dict = {k: (v if v != "" else None) for k, v in row_dict.items()}
+            # Create dict from header + values
+            row_dict = dict(zip(english_header, row))
 
-        transaction = NordeaTransaction(**row_dict)
-        transactions.append(transaction)
+            # Convert empty strings to None
+            row_dict = {k: (v if v != "" else None) for k, v in row_dict.items()}
+
+            transaction = NordeaTransaction(**row_dict)
+            transactions.append(transaction)
 
     return transactions
 
@@ -140,48 +147,40 @@ def create_staging_table(con: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
+def parse_posting_date(date_str: str | None, source_file: str) -> date | None:
+    """Parse posting date string to date object with error handling."""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, "%Y/%m/%d").date()
+    except ValueError as e:
+        raise ValueError(
+            f"Failed to parse posting_date '{date_str}' in file "
+            f"'{source_file}': {e}"
+        ) from e
+
+
 def load_transactions(
     con: duckdb.DuckDBPyConnection,
     transactions: list[NordeaTransaction],
     source_file: str,
 ) -> tuple[int, int]:
     """
-    Load transactions into DuckDB, skipping duplicates by hash.
+    Load transactions into DuckDB using batch insert with ON CONFLICT.
 
     Returns:
         Tuple of (inserted_count, skipped_count)
     """
-    inserted = 0
-    skipped = 0
+    if not transactions:
+        return 0, 0
 
+    # Prepare batch data
+    batch_data = []
     for txn in transactions:
-        txn_hash = txn.compute_hash()
-
-        # Check if already exists
-        result = con.execute(
-            "SELECT 1 FROM raw_nordea_transactions WHERE transaction_hash = ?",
-            [txn_hash],
-        ).fetchone()
-
-        if result:
-            skipped += 1
-            continue
-
-        # Parse date if present
-        posting_date = None
-        if txn.posting_date:
-            posting_date = datetime.strptime(txn.posting_date, "%Y/%m/%d").date()
-
-        # Insert new transaction
-        con.execute(
-            """
-            INSERT INTO raw_nordea_transactions (
-                transaction_hash, posting_date, amount, sender, recipient,
-                name, description, balance, currency, reconciled, source_file
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                txn_hash,
+        posting_date = parse_posting_date(txn.posting_date, source_file)
+        batch_data.append(
+            (
+                txn.compute_hash(),
                 posting_date,
                 txn.amount,
                 txn.sender,
@@ -192,9 +191,35 @@ def load_transactions(
                 txn.currency,
                 txn.reconciled,
                 source_file,
-            ],
+            )
         )
-        inserted += 1
+
+    # Get count before insert
+    result = con.execute(
+        "SELECT COUNT(*) FROM raw_nordea_transactions"
+    ).fetchone()
+    count_before: int = result[0] if result else 0
+
+    # Batch insert with ON CONFLICT DO NOTHING for deduplication
+    con.executemany(
+        """
+        INSERT INTO raw_nordea_transactions (
+            transaction_hash, posting_date, amount, sender, recipient,
+            name, description, balance, currency, reconciled, source_file
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (transaction_hash) DO NOTHING
+        """,
+        batch_data,
+    )
+
+    # Get count after insert
+    result = con.execute(
+        "SELECT COUNT(*) FROM raw_nordea_transactions"
+    ).fetchone()
+    count_after: int = result[0] if result else 0
+
+    inserted = count_after - count_before
+    skipped = len(transactions) - inserted
 
     return inserted, skipped
 
