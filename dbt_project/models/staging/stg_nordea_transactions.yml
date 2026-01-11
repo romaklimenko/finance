@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: stg_nordea_transactions
+    description: Staged Nordea bank transactions with cleaned column names and derived fields
+    columns:
+      - name: transaction_hash
+        description: Unique transaction identifier (MD5 hash)
+        tests:
+          - unique
+          - not_null
+      - name: posting_date
+        description: Transaction posting date
+        tests:
+          - not_null
+      - name: amount
+        description: Transaction amount (negative for debits, positive for credits)
+        tests:
+          - not_null
+      - name: balance
+        description: Account balance after transaction
+      - name: currency
+        description: Transaction currency
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['DKK']
+      - name: sender_account
+        description: Sender account number (populated for outgoing transfers)
+      - name: recipient_account
+        description: Recipient account number (populated for incoming transfers)
+      - name: counterparty_name
+        description: Name of the transaction counterparty
+      - name: transaction_description
+        description: Transaction description or merchant name
+      - name: is_reconciled
+        description: Whether transaction has been reconciled
+      - name: transaction_type
+        description: Derived transaction type (debit or credit)
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['debit', 'credit']
+      - name: absolute_amount
+        description: Absolute value of the transaction amount
+      - name: source_file
+        description: Original CSV source file
+      - name: loaded_at
+        description: Timestamp when the record was loaded into staging
