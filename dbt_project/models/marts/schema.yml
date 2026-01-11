@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: Date dimension table covering 2020-2030 with calendar attributes
+    columns:
+      - name: date_key
+        description: Primary key (date value)
+        tests:
+          - unique
+          - not_null
+      - name: date_day
+        description: The calendar date
+        tests:
+          - not_null
+      - name: year
+        description: Four-digit year
+      - name: quarter
+        description: Quarter of year (1-4)
+      - name: month
+        description: Month of year (1-12)
+      - name: week_of_year
+        description: ISO week number (1-53)
+      - name: day_of_month
+        description: Day of month (1-31)
+      - name: day_of_year
+        description: Day of year (1-366)
+      - name: day_of_week
+        description: ISO day of week (1=Monday, 7=Sunday)
+      - name: day_name
+        description: Name of the day (Monday, Tuesday, etc.)
+      - name: is_weekend
+        description: True if Saturday or Sunday
+      - name: month_name
+        description: Name of the month (January, February, etc.)
+      - name: year_month
+        description: Year and month formatted as YYYY-MM
+      - name: year_quarter
+        description: Year and quarter formatted as YYYY-QN
+      - name: is_first_day_of_month
+        description: True if first day of the month
+      - name: is_last_day_of_month
+        description: True if last day of the month
+
+  - name: dim_account
+    description: Account dimension for bank accounts
+    columns:
+      - name: account_key
+        description: Primary key (account number)
+        tests:
+          - unique
+          - not_null
+      - name: account_number
+        description: Bank account number
+        tests:
+          - not_null
+      - name: bank_name
+        description: Name of the bank
+      - name: default_currency
+        description: Default currency for the account
+      - name: account_type
+        description: Type of account (Checking, Savings, etc.)
