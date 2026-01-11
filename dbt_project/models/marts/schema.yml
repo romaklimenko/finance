@@ -60,3 +60,54 @@ models:
         description: Default currency for the account
       - name: account_type
         description: Type of account (Checking, Savings, etc.)
+
+  - name: fct_transactions
+    description: Fact table containing all bank transactions
+    columns:
+      - name: transaction_key
+        description: Primary key (transaction hash)
+        tests:
+          - unique
+          - not_null
+      - name: date_key
+        description: Foreign key to dim_date
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: account_key
+        description: Foreign key to dim_account
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_account')
+                field: account_key
+      - name: amount
+        description: Transaction amount (negative for debits, positive for credits)
+        tests:
+          - not_null
+      - name: absolute_amount
+        description: Absolute value of transaction amount
+      - name: balance
+        description: Account balance after transaction
+      - name: transaction_type
+        description: Type of transaction (debit or credit)
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['debit', 'credit']
+      - name: counterparty_name
+        description: Name of the transaction counterparty
+      - name: transaction_description
+        description: Transaction description or merchant name
+      - name: currency
+        description: Transaction currency
+      - name: category_key
+        description: Foreign key to dim_category (future use)
+      - name: source_file
+        description: Original CSV source file
+      - name: loaded_at
+        description: Timestamp when the record was loaded
