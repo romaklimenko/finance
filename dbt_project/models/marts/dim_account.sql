@@ -10,7 +10,7 @@ with accounts as (
     from {{ ref('stg_nordea_transactions') }}
     where sender_account is not null
 
-    union
+    union all
 
     select distinct
         recipient_account as account_number
