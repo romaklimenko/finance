@@ -26,11 +26,24 @@ cd finance
 
 # Install dependencies
 uv sync
-
-# Run dbt
-cd dbt_project
-dbt run
 ```
+
+## Quick Start
+
+Run the complete pipeline (load data, transform, and launch dashboard):
+
+```bash
+python run.py
+```
+
+This will:
+1. Load CSV files from `data/raw/nordea/` into DuckDB
+2. Run dbt seed and models
+3. Launch the Streamlit dashboard at http://localhost:8501
+
+**Options:**
+- `--skip-load` - Skip CSV loading, use existing data
+- `--skip-dbt` - Skip dbt transformations, use existing models
 
 ## Workflow
 
