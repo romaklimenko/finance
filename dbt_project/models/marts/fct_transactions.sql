@@ -5,7 +5,7 @@
 }}
 
 with transactions as (
-    select * from {{ ref('stg_nordea_transactions') }}
+    select * from {{ ref('int_transactions_categorized') }}
 ),
 
 final as (
@@ -26,8 +26,9 @@ final as (
         transaction_description,
         currency,
 
-        -- Future: category_key (will be populated by categorization system)
-        null::varchar as category_key,
+        -- Category
+        category_key,
+        categorization_status,
 
         -- Metadata
         source_file,
