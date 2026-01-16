@@ -31,6 +31,44 @@ cd dbt_project
 dbt run
 ```
 
+## Workflow
+
+### 1. Load Bank Data
+
+Export transactions from your bank and load into DuckDB:
+
+```bash
+# Place CSV files in data/raw/nordea/
+python scripts/load_nordea.py
+```
+
+### 2. Transform with dbt
+
+Run dbt to transform raw data into a star schema:
+
+```bash
+cd dbt_project
+
+# Load seed data (category mappings)
+dbt seed
+
+# Run all models
+dbt run
+
+# Run tests
+dbt test
+```
+
+### 3. Export for Power BI
+
+Export mart tables to CSV format:
+
+```bash
+python scripts/export_to_powerbi.py
+```
+
+Then follow the [Power BI Setup Guide](docs/POWER_BI_SETUP.md) to import and visualize the data.
+
 ## Project Structure
 
 ```
