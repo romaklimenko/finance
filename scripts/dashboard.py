@@ -57,7 +57,7 @@ def load_data():
         d.quarter,
         d.month,
         d.month_name,
-        d.week,
+        d.week_of_year,
         d.day_of_week,
         c.category_name,
         c.category_group,
