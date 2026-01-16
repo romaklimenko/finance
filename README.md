@@ -33,6 +33,10 @@ uv sync
 Run the complete pipeline (load data, transform, and launch dashboard):
 
 ```bash
+# Activate virtual environment (Windows)
+.venv\Scripts\activate
+
+# Run the pipeline
 python run.py
 ```
 

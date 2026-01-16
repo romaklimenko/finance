@@ -69,7 +69,7 @@ def main() -> None:
         csv_dir = data_dir / "raw" / "nordea"
         if csv_dir.exists() and list(csv_dir.glob("*.csv")):
             run_command(
-                ["python", "scripts/load_nordea.py"],
+                [sys.executable, "scripts/load_nordea.py"],
                 "Step 1: Loading Nordea CSV data into DuckDB",
                 cwd=root_dir,
             )
