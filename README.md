@@ -7,12 +7,13 @@ Personal finance tracking and reporting system using DuckDB and dbt Core.
 This project automates personal finance tracking by:
 1. Loading bank transaction exports (CSV files)
 2. Transforming data using dbt Core with Kimball warehouse architecture
-3. Generating reports for Power BI visualization
+3. Visualizing data with interactive Streamlit dashboard or Power BI reports
 
 ## Tech Stack
 
 - **Database**: DuckDB (local file-based)
 - **Transformations**: dbt Core with dbt-duckdb adapter
+- **Visualization**: Streamlit dashboard, Power BI
 - **Package Manager**: uv
 - **Python**: 3.11+
 
@@ -25,11 +26,24 @@ cd finance
 
 # Install dependencies
 uv sync
-
-# Run dbt
-cd dbt_project
-dbt run
 ```
+
+## Quick Start
+
+Run the complete pipeline (load data, transform, and launch dashboard):
+
+```bash
+python run.py
+```
+
+This will:
+1. Load CSV files from `data/raw/nordea/` into DuckDB
+2. Run dbt seed and models
+3. Launch the Streamlit dashboard at http://localhost:8501
+
+**Options:**
+- `--skip-load` - Skip CSV loading, use existing data
+- `--skip-dbt` - Skip dbt transformations, use existing models
 
 ## Workflow
 
@@ -59,7 +73,23 @@ dbt run
 dbt test
 ```
 
-### 3. Export for Power BI
+### 3. Visualize Data
+
+#### Option A: Streamlit Dashboard (Recommended)
+
+Launch the interactive web dashboard:
+
+```bash
+streamlit run scripts/dashboard.py
+```
+
+The dashboard will open in your browser at http://localhost:8501 with:
+- Key metrics (Income, Expenses, Net Flow)
+- Interactive charts (spending by category, trends over time)
+- Transaction search and filtering
+- CSV export functionality
+
+#### Option B: Power BI
 
 Export mart tables to CSV format:
 

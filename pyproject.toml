@@ -8,6 +8,9 @@ dependencies = [
     "dbt-duckdb>=1.7",
     "duckdb>=0.9",
     "pydantic>=2.0",
+    "streamlit>=1.28",
+    "plotly>=5.17",
+    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]
